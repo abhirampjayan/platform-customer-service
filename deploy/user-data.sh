@@ -12,8 +12,38 @@ usermod -aG docker ec2-user
 
 install -d -o ec2-user -g ec2-user /opt/timeout-service
 
-# Container stdout goes to CloudWatch through Docker's awslogs driver, so the agent is
-# only here for the host memory and disk metrics EC2 does not publish on its own.
-# The config is uploaded separately, after the instance is up.
+install -d /opt/aws/amazon-cloudwatch-agent/etc
+cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
+{
+	"agent": {
+		"metrics_collection_interval": 60,
+		"run_as_user": "cwagent"
+	},
+	"metrics": {
+		"namespace": "SentinelSample/TimeoutService",
+		"append_dimensions": {
+			"InstanceId": "${aws:InstanceId}"
+		},
+		"aggregation_dimensions": [["InstanceId"]],
+		"metrics_collected": {
+			"mem": {
+				"measurement": ["mem_used_percent"],
+				"metrics_collection_interval": 60
+			},
+			"disk": {
+				"measurement": ["used_percent"],
+				"resources": ["/"],
+				"metrics_collection_interval": 60
+			}
+		}
+	}
+}
+JSON
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+	-a fetch-config \
+	-m ec2 \
+	-c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+	-s
 
 touch /opt/timeout-service/.bootstrap-complete

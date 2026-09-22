@@ -1,0 +1,6 @@
+aws_region    = "us-east-1"
+vpc_id        = "vpc-0123456789abcdef0"
+subnet_id     = "subnet-0123456789abcdef0"
+key_name      = "timeout-service"
+operator_cidr = "203.0.113.4/32"
+alert_email   = "contact@abhirampjayan.com"

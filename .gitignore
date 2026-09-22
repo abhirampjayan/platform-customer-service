@@ -10,6 +10,14 @@ dist/
 .env.*
 !.env.example
 
+# Terraform state and local input values
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
 # Logs
 logs/
 *.log
