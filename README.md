@@ -103,6 +103,62 @@ docker build -t timeout-service:local .
 docker run --rm -p 8080:8080 -e CHAOS_TOKEN="$CHAOS_TOKEN" timeout-service:local
 ```
 
+## Deploy to EC2 from your local machine
+
+Before you can SSH into the EC2 instance, update the firewall rule with the public IP your
+current network is using. Run this from any machine that can reach the internet:
+
+```bash
+curl -s https://checkip.amazonaws.com
+```
+
+Example output:
+
+```bash
+103.210.133.108
+```
+
+Use that value in `deploy/terraform/terraform.tfvars`:
+
+```hcl
+operator_cidr = "103.210.133.108/32"
+```
+
+Then apply the Terraform change so the security group allows your current address:
+
+```bash
+cd deploy/terraform
+terraform apply
+```
+
+After the instance is reachable, make sure Docker Desktop is running locally, then deploy the
+app with the helper script:
+
+```bash
+cd ../..
+export SSH_KEY="$HOME/Downloads/platform-service.pem"
+export PUBLIC_IP="$(terraform -chdir=deploy/terraform output -raw public_ip)"
+export CHAOS_TOKEN="$(openssl rand -hex 24)"
+./deploy/deploy-local.sh
+```
+
+The script will:
+
+- build the Docker image locally
+- transfer it to the EC2 instance
+- start the container on port 80
+- verify the app health endpoint
+
+Check the app after deployment:
+
+```bash
+curl -s http://"$PUBLIC_IP"/healthz
+```
+
+If your network IP changes again, repeat the `curl -s https://checkip.amazonaws.com` step and
+update `operator_cidr` in `deploy/terraform/terraform.tfvars` before running `terraform apply`
+again.
+
 ## AWS resources
 
 | Resource | Why |
