@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/abhirampjayan/timeout-service.git}"
-APP_DIR="${APP_DIR:-/opt/timeout-service}"
+REPO_URL="${REPO_URL:-https://github.com/abhirampjayan/platform-customer-service.git}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
+APP_DIR="${APP_DIR:-/opt/platform-customer-service}"
 IMAGE_NAME="${IMAGE_NAME:-timeout-service:local}"
+# PORT is the public port; HOST_PORT is the port inside the container.
 PORT="${PORT:-80}"
 HOST_PORT="${HOST_PORT:-8080}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 LOG_GROUP="${LOG_GROUP:-/sentinel-sample/timeout-service}"
 
 if [[ -z "${CHAOS_TOKEN:-}" ]]; then
-  CHAOS_TOKEN="$(openssl rand -hex 24)"
-  printf 'Generated CHAOS_TOKEN=%s\n' "$CHAOS_TOKEN"
+  printf 'Export CHAOS_TOKEN (at least 32 characters) before deployment; keep it securely for /admin/chaos.\n' >&2
+  exit 1
 fi
 
 if [[ ${#CHAOS_TOKEN} -lt 32 ]]; then
@@ -19,21 +21,26 @@ if [[ ${#CHAOS_TOKEN} -lt 32 ]]; then
   exit 1
 fi
 
-sudo install -d -o ec2-user -g ec2-user "$APP_DIR"
+sudo docker info >/dev/null
+sudo install -d -o "$(id -un)" -g "$(id -gn)" "$APP_DIR"
+BUILD_DIR="$(mktemp -d "$APP_DIR/build.XXXXXX")"
+trap 'rm -rf -- "$BUILD_DIR"' EXIT
 
-if [[ ! -d "$APP_DIR/.git" ]]; then
-  sudo git clone "$REPO_URL" "$APP_DIR"
+printf 'Cloning a fresh copy of %s (branch %s)...\n' "$REPO_URL" "$REPO_BRANCH"
+git clone --depth 1 --single-branch --branch "$REPO_BRANCH" -- "$REPO_URL" "$BUILD_DIR/source"
+
+printf 'Building %s from scratch...\n' "$IMAGE_NAME"
+sudo docker build --pull --no-cache -t "$IMAGE_NAME" "$BUILD_DIR/source"
+
+# Keep the existing service running until the new image builds successfully.
+# Remove only this service's container, never unrelated containers or volumes.
+EXISTING_CONTAINER="$(sudo docker container ls -aq --filter 'name=^/timeout-service$')"
+if [[ -n "$EXISTING_CONTAINER" ]]; then
+  sudo docker rm -f "$EXISTING_CONTAINER" >/dev/null
 fi
 
-cd "$APP_DIR"
-
-sudo git pull --ff-only origin "$(git branch --show-current || echo main)" || true
-
-sudo docker build -t "$IMAGE_NAME" .
-
-sudo docker rm -f timeout-service >/dev/null 2>&1 || true
-
-sudo docker run -d \
+export CHAOS_TOKEN
+sudo --preserve-env=CHAOS_TOKEN docker run -d \
   --name timeout-service \
   --restart unless-stopped \
   -p "$PORT:$HOST_PORT" \
@@ -41,15 +48,17 @@ sudo docker run -d \
   --log-opt "awslogs-region=$AWS_REGION" \
   --log-opt "awslogs-group=$LOG_GROUP" \
   --log-opt awslogs-stream=timeout-service \
-  -e CHAOS_TOKEN="$CHAOS_TOKEN" \
+  -e CHAOS_TOKEN \
   -e PORT="$HOST_PORT" \
   -e HOST="0.0.0.0" \
   -e NODE_ENV="production" \
   "$IMAGE_NAME"
 
-sleep 2
 sudo docker ps --filter name=timeout-service --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-curl --fail --silent http://127.0.0.1/healthz
+curl --fail --silent --show-error --retry 20 --retry-connrefused \
+  --retry-delay 2 --retry-max-time 90 --max-time 5 "http://127.0.0.1:$PORT/healthz"
 
 printf '\nService is running at http://127.0.0.1:%s\n' "$PORT"
-printf 'CHAOS_TOKEN=%s\n' "$CHAOS_TOKEN"
+if [[ -n "${PUBLIC_IP:-}" ]]; then
+  printf 'Public health check (allowed networks only): http://%s.sslip.io:%s/healthz\n' "$PUBLIC_IP" "$PORT"
+fi

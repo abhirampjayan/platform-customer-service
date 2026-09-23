@@ -144,10 +144,25 @@ export CHAOS_TOKEN="$(openssl rand -hex 24)"
 
 The script will:
 
-- build the Docker image locally
+- clone a fresh copy of `https://github.com/abhirampjayan/platform-customer-service.git`
+  (`main` by default; set `REPO_BRANCH` to deploy another branch)
+- build the Docker image locally for `linux/arm64` with `--pull --no-cache`
 - transfer it to the EC2 instance
-- start the container on port 80
+- remove the existing `timeout-service` container only after the new image is ready
+- start a new container on port 80, leaving unrelated containers and volumes untouched
 - verify the app health endpoint
+
+Local uncommitted changes are **not** deployed: push the desired changes to the selected
+repository branch first. Both [deploy/deploy-local.sh](deploy/deploy-local.sh) and
+[deploy/deploy-ec2.sh](deploy/deploy-ec2.sh) require `CHAOS_TOKEN` to be exported (at least
+32 characters); neither prints the token. Keep it securely for admin requests.
+
+For an on-instance build, run [deploy/deploy-ec2.sh](deploy/deploy-ec2.sh) on EC2 instead.
+It also uses a fresh clone and uncached build, with temporary source under
+`/opt/platform-customer-service` by default. Temporary clones are cleaned up on exit;
+existing working copies are not reset or deleted. Both scripts accept `PORT` (public port,
+default `80`) and `HOST_PORT` (container port, default `8080`). Terraform allows port 80;
+using another public port also requires a matching security-group rule.
 
 Check the app after deployment:
 
