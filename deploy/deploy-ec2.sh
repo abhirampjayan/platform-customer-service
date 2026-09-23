@@ -55,8 +55,15 @@ sudo --preserve-env=CHAOS_TOKEN docker run -d \
   "$IMAGE_NAME"
 
 sudo docker ps --filter name=timeout-service --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-curl --fail --silent --show-error --retry 20 --retry-connrefused \
-  --retry-delay 2 --retry-max-time 90 --max-time 5 "http://127.0.0.1:$PORT/healthz"
+printf 'Waiting for the service health endpoint...\n'
+# Docker can publish the port before Node listens, causing resets (curl exit 56).
+# Retry all failures for this read-only GET, not just connection refusals/HTTP 5xx.
+if ! curl --fail --silent --show-error --retry 20 --retry-all-errors \
+  --retry-delay 2 --retry-max-time 90 --max-time 5 --output /dev/null "http://127.0.0.1:$PORT/healthz"; then
+  printf 'Service did not become healthy within the startup retry budget. Check container logs in CloudWatch.\n' >&2
+  sudo docker inspect --format 'State={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{end}} Restarts={{.RestartCount}} ExitCode={{.State.ExitCode}}' timeout-service >&2 || true
+  exit 1
+fi
 
 printf '\nService is running at http://127.0.0.1:%s\n' "$PORT"
 if [[ -n "${PUBLIC_IP:-}" ]]; then
