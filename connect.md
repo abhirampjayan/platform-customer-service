@@ -8,7 +8,7 @@ asks for the real account ID and region it runs in.
 
 ## Before you start
 
-- `timeout-service` is deployed and answering on its Elastic IP.
+- `timeout-service` is deployed and answering on its Elastic IP through its `sslip.io` hostname.
 - Its CloudWatch log group exists and contains at least one `upstream.timeout` event.
 - You can sign in to Sentinel. If you have no organization yet, signing up founds one and
   makes you its admin; if someone sent you an invitation link, that link joins you to theirs.
@@ -39,8 +39,12 @@ From your deploy shell:
 ```bash
 aws sts get-caller-identity --query Account --output text   # the 12-digit account ID
 echo "$AWS_REGION"
-echo "http://$PUBLIC_IP"
+echo "http://$PUBLIC_IP.sslip.io"
 ```
+
+For Terraform deployments, get the same URL with
+`terraform -chdir=deploy/terraform output -raw service_url` from the repository root.
+No custom domain is required. This is HTTP-only and remains restricted to `operator_cidr`.
 
 | Sentinel field | Value for this app | Rule |
 | --- | --- | --- |

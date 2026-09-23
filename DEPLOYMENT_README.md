@@ -90,13 +90,21 @@ When it finishes, note:
 
 ```bash
 terraform output public_ip
+terraform output -raw service_url
 ```
 
 Example:
 
 ```text
 52.71.202.118
+http://52.71.202.118.sslip.io
 ```
+
+The `sslip.io` hostname resolves automatically to the Elastic IP. No custom domain,
+Route 53 record, or load balancer is needed. Use HTTP, not HTTPS: DNS does not provide a
+TLS certificate. The hostname and raw IP have the same `operator_cidr` access restriction.
+Keep that restriction in place for SSH; allowing demo users on other networks requires
+a separate HTTP-only ingress rule, not opening `operator_cidr` to everyone.
 
 ## 7. SSH into the EC2 instance
 
@@ -162,8 +170,13 @@ docker run -d \
 From your local machine:
 
 ```bash
-curl -i http://52.71.202.118/healthz
+export SERVICE_URL="$(terraform -chdir=deploy/terraform output -raw service_url)"
+curl -i "$SERVICE_URL/healthz"
 ```
+
+Run this from the repository root. If still inside `deploy/terraform`, omit `-chdir`.
+If the hostname fails to resolve but the raw IP works, check whether your DNS resolver
+or VPN blocks `sslip.io`.
 
 Expected response:
 
@@ -174,8 +187,8 @@ HTTP/1.1 200 OK
 Also test:
 
 ```bash
-curl -i http://52.71.202.118/api/orders/ord_123
-curl -i "http://52.71.202.118/api/slow?ms=5000"
+curl -i "$SERVICE_URL/api/orders/ord_123"
+curl -i "$SERVICE_URL/api/slow?ms=5000"
 ```
 
 The second request should return `200` and the slow one should return `504`.
@@ -185,7 +198,7 @@ The second request should return `200` and the slow one should return `504`.
 To change runtime behavior, call the admin route:
 
 ```bash
-curl -i -X POST http://52.71.202.118/admin/chaos \
+curl -i -X POST "$SERVICE_URL/admin/chaos" \
   -H "Authorization: Bearer $CHAOS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"latencyMs":5000}'

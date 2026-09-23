@@ -3,11 +3,14 @@ output "instance_id" {
 }
 
 output "public_ip" {
-  value = aws_eip.service.public_ip
+  value       = aws_eip.service.public_ip
+  description = "Stable Elastic IP for SSH and direct HTTP access."
 }
 
 output "service_url" {
-  value = "http://${aws_eip.service.public_ip}"
+  value       = "http://${aws_eip.service.public_ip}.sslip.io"
+  description = "HTTP URL resolving to the Elastic IP through sslip.io; no custom domain or TLS certificate required. Access is restricted to operator_cidr."
+  depends_on  = [aws_eip_association.service]
 }
 
 output "log_group_name" {

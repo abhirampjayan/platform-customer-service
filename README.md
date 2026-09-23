@@ -152,8 +152,25 @@ The script will:
 Check the app after deployment:
 
 ```bash
-curl -s http://"$PUBLIC_IP"/healthz
+export SERVICE_URL="$(terraform -chdir=deploy/terraform output -raw service_url)"
+curl -s "$SERVICE_URL/healthz"
 ```
+
+Terraform exposes `http://<elastic-ip>.sslip.io` as `service_url`. For example, an Elastic IP
+of `52.6.47.252` gives `http://52.6.47.252.sslip.io`. The public `sslip.io` DNS service resolves
+the embedded IP automatically; no purchased domain, Route 53 hosted zone, or DNS record is
+needed. Traffic goes directly to the instance's Elastic IP on port 80, not through a proxy.
+The raw Elastic IP still works for HTTP and SSH.
+
+Use **HTTP**, not HTTPS: `sslip.io` supplies DNS only, not a TLS certificate. The security
+group still permits HTTP and SSH only from `operator_cidr`. Do not set that value to
+`0.0.0.0/0` to share the demo, as that would also expose SSH. If other networks need access,
+add a separate HTTP-only ingress rule for their CIDRs.
+
+If the raw IP works but the hostname does not resolve, your DNS resolver or VPN may block
+wildcard IP domains. Check DNS resolution and try an allowed resolver/network; Terraform
+cannot override that restriction. The public subnet must also have a route to an Internet
+Gateway; attaching an Elastic IP alone does not make a private subnet public.
 
 If your network IP changes again, repeat the `curl -s https://checkip.amazonaws.com` step and
 update `operator_cidr` in `deploy/terraform/terraform.tfvars` before running `terraform apply`
@@ -175,8 +192,9 @@ again.
 | CloudWatch dashboard | Timeouts, host memory, and the raw timeout events side by side. |
 | IAM role `SentinelReadOnly` | What Sentinel assumes. Created in [connect.md](connect.md), not here. |
 
-There is no load balancer, no TLS certificate, no domain and no database. The service is
-plain HTTP on port 80, reachable only from your own IP, and serves no real data.
+There is no load balancer, no TLS certificate, no custom domain and no database. The service
+uses an Elastic IP with a free `sslip.io` hostname. It is plain HTTP on port 80, reachable
+only from your own IP, and serves no real data.
 
 ## Deploy it to AWS
 
