@@ -37,3 +37,18 @@ variable "timeout_alarm_threshold" {
   type    = number
   default = 1
 }
+
+# Hackathon: Sentinel runs locally against this same AWS account rather than
+# from a deployed EC2 instance, so the trust policy names the IAM identity the
+# local process assumes-role as, not an instance role.
+variable "sentinel_principal_arn" {
+  type        = string
+  description = "The IAM principal (user or role) Sentinel calls AssumeRole as. Null skips creating the role."
+  default     = null
+}
+
+variable "sentinel_external_id" {
+  type        = string
+  description = "External ID shown on the application's connection page in the Sentinel console."
+  default     = null
+}

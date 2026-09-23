@@ -230,3 +230,84 @@ locals {
     ManagedBy   = "terraform"
   }
 }
+
+# SentinelReadOnly: read-only access the Sentinel deployment assumes to read this log group.
+# Absent connect.md's manual `aws iam create-role` steps, created here instead since it lives
+# in the same account as the log group it grants access to.
+resource "aws_iam_role" "sentinel_read_only" {
+  count                = var.sentinel_principal_arn == null ? 0 : 1
+  name                 = "SentinelReadOnly"
+  description          = "Read-only access for Sentinel Ops investigations"
+  max_session_duration = 3600
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = var.sentinel_principal_arn }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        StringEquals = { "sts:ExternalId" = var.sentinel_external_id }
+      }
+    }]
+  })
+
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy" "sentinel_read_only" {
+  count = var.sentinel_principal_arn == null ? 0 : 1
+  name  = "SentinelReadOnlyAccess"
+  role  = aws_iam_role.sentinel_read_only[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadApplicationLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:FilterLogEvents",
+          "logs:GetLogEvents",
+          "logs:DescribeLogStreams",
+        ]
+        Resource = "${aws_cloudwatch_log_group.service.arn}:*"
+      },
+      {
+        Sid    = "DiscoverAndQueryLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups",
+          "logs:StartQuery",
+          "logs:StopQuery",
+          "logs:GetQueryResults",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadMetricsAndAlarms"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:ListMetrics",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:DescribeAlarmHistory",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "DescribeCompute"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeAddresses",
+          "tag:GetResources",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+}

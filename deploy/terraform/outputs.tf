@@ -17,3 +17,8 @@ output "log_group_name" {
 output "sns_subscription_confirmation_required" {
   value = "Confirm the subscription email sent to ${var.alert_email} before notifications can be delivered."
 }
+
+output "sentinel_read_only_role_arn" {
+  value       = try(aws_iam_role.sentinel_read_only[0].arn, null)
+  description = "Paste into the application's AWS connection in the Sentinel console, then verify."
+}
